@@ -1,379 +1,371 @@
-import { useState, useEffect } from "react";
-import C from "./curriculum.js";
+import React, { useState, useEffect, useCallback } from 'react';
+import { GRAMMAR } from './grammarData';
+import { BRANCHES, TIERS, TIER_INFO, STORAGE_KEY } from './config';
 
-const STORAGE_KEY = "logos-progress-v3";
-function loadProgress() {
-  try { const d = JSON.parse(localStorage.getItem(STORAGE_KEY)); return d && d.completed ? d : { completed: {}, scores: {}, bestPct: {} }; }
-  catch { return { completed: {}, scores: {}, bestPct: {} }; }
-}
-function saveProgress(p) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(p)); } catch {} }
+// ——— Utility ———
+const loadProgress = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; } };
+const saveProgress = (p) => localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
 
-const MASTERY_THRESHOLD = 80;
+// ——— Color utils ———
+const branchColor = (id) => BRANCHES.find(b=>b.id===id)?.color||'#c9a84c';
+const branchBg = (id) => BRANCHES.find(b=>b.id===id)?.bg||'#18150e';
 
-const THEMES = {
-  explorer:    { bg:"#FFF8F0",accent:"#E8722A",sec:"#F4A261",text:"#3D2C1E",card:"#FFF3E8",badge:"🌱",label:"Seeds",font:"'Baloo 2',cursive" },
-  adventurer:  { bg:"#F0F5FF",accent:"#2563EB",sec:"#60A5FA",text:"#1E293B",card:"#E8F0FE",badge:"🌿",label:"Sprouts",font:"'Baloo 2',cursive" },
-  scholar:     { bg:"#FAF5FF",accent:"#7C3AED",sec:"#A78BFA",text:"#2D1B4E",card:"#F3EAFF",badge:"🌳",label:"Branches",font:"'Baloo 2',cursive" },
-  philosopher: { bg:"#F0FAF4",accent:"#059669",sec:"#34D399",text:"#134E30",card:"#E6F7ED",badge:"🌲",label:"Deep Roots",font:"'Baloo 2',cursive" },
-  master:      { bg:"#FFF5F7",accent:"#BE185D",sec:"#F472B6",text:"#4A1230",card:"#FFE8EF",badge:"🌟",label:"Canopy",font:"'Baloo 2',cursive" },
+// ——— Styles ———
+const S = {
+  app: { minHeight:'100vh', fontFamily:"'Source Sans 3',sans-serif", background:'#0a0a0f', color:'#e8e4dd' },
+  heading: { fontFamily:"'Cormorant Garamond',serif" },
+  mono: { fontFamily:"'JetBrains Mono',monospace" },
+  btn: (c,filled) => ({
+    padding:'12px 24px', borderRadius:8, border:filled?'none':`1.5px solid ${c}33`,
+    background:filled?c:'transparent', color:filled?'#0a0a0f':c,
+    fontSize:15, fontWeight:600, cursor:'pointer', transition:'all 0.2s',
+    fontFamily:"'Source Sans 3',sans-serif",
+  }),
+  card: (c) => ({
+    background:`${c}08`, border:`1px solid ${c}18`, borderRadius:12, padding:24,
+    cursor:'pointer', transition:'all 0.25s',
+  }),
 };
-const REALM_ORDER = ["explorer","adventurer","scholar","philosopher","master"];
-const REALM_LABELS = { explorer:"The Basics",adventurer:"Building Blocks",scholar:"Putting It Together",philosopher:"The Big Questions",master:"Mind-Bending Ideas" };
 
-function shuffle(a) { const b=[...a]; for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];} return b; }
+// ====== APP ======
+export default function App() {
+  const [view, setView] = useState('home'); // home | branch | unit | quiz | workshop | encounter
+  const [branch, setBranch] = useState(null);
+  const [unitIdx, setUnitIdx] = useState(0);
+  const [tier, setTier] = useState('seed');
+  const [prog, setProg] = useState(loadProgress);
 
-function isUnlocked(unitId, prog) {
-  if (unitId === 1) return true;
-  const prevPct = prog.bestPct?.[unitId - 1] || 0;
-  return prevPct >= MASTERY_THRESHOLD;
-}
+  useEffect(() => { saveProgress(prog); }, [prog]);
 
-function badgeFor(pct) { return pct >= 100 ? "🏆" : pct >= 90 ? "🥈" : pct >= 80 ? "🥉" : null; }
+  const goHome = () => { setView('home'); setBranch(null); };
+  const goBranch = (id) => { setBranch(id); setView('branch'); };
+  const goUnit = (idx) => { setUnitIdx(idx); setView('unit'); };
 
-// ══════════════════════════════════════════
-//  LEARN VIEW
-// ══════════════════════════════════════════
+  const units = branch === 'grammar' ? GRAMMAR : [];
+  const unit = units[unitIdx];
+  const color = branch ? branchColor(branch) : '#c9a84c';
+  const bg = branch ? branchBg(branch) : '#0a0a0f';
 
-function LearnView({unit}) {
-  const t = THEMES[unit.realm];
-  return (
-    <div style={{animation:"fadeIn 0.3s ease-out"}}>
-      <div style={{background:`linear-gradient(135deg,${t.card},${t.bg})`,borderRadius:20,padding:"28px 24px",marginBottom:24,borderLeft:`5px solid ${t.accent}`,position:"relative"}}>
-        <div style={{position:"absolute",top:-13,left:18,background:t.accent,color:"#fff",borderRadius:20,padding:"4px 14px",fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase"}}>Story</div>
-        <p style={{fontFamily:t.font,fontSize:17,lineHeight:1.85,color:t.text,margin:0,whiteSpace:"pre-line"}}>{unit.story}</p>
-      </div>
-      {unit.learn.map((item,i) => (
-        <div key={i} style={{background:"#fff",borderRadius:16,padding:"22px",marginBottom:14,boxShadow:"0 2px 10px rgba(0,0,0,0.06)",borderLeft:`4px solid ${item.type==="example"?t.sec:t.accent}`,animation:`slideUp 0.4s ease-out ${i*0.08}s both`}}>
-          <div style={{fontSize:10,fontWeight:700,color:item.type==="example"?t.sec:t.accent,textTransform:"uppercase",letterSpacing:1.2,marginBottom:5}}>{item.type==="example"?"✏️ Example":"💡 Concept"}</div>
-          <h4 style={{margin:"0 0 10px",fontSize:18,color:t.text,fontFamily:t.font,fontWeight:700}}>{item.title}</h4>
-          <pre style={{fontFamily:"'Baloo 2',cursive",fontSize:16,lineHeight:1.8,color:t.text,margin:0,whiteSpace:"pre-wrap",background:"transparent"}}>{item.body}</pre>
-        </div>
-      ))}
-      <div style={{background:t.card,borderRadius:20,padding:"28px 24px",marginTop:8,borderLeft:`5px solid ${t.sec}`,position:"relative"}}>
-        <div style={{position:"absolute",top:-13,left:18,background:t.sec,color:"#fff",borderRadius:20,padding:"4px 14px",fontSize:11,fontWeight:700,letterSpacing:1.2,textTransform:"uppercase"}}>Why This Matters</div>
-        <p style={{fontFamily:t.font,fontSize:16,lineHeight:1.75,color:t.text,margin:0}}>{unit.realWorld}</p>
+  const getScore = (uid, t) => prog[`${uid}_${t}`];
+  const setScore = (uid, t, score) => setProg(p => ({...p, [`${uid}_${t}`]:score}));
+  const getBadge = (score) => score >= 100 ? '🏆' : score >= 90 ? '🥈' : score >= 80 ? '🥉' : null;
+  const isUnlocked = (idx) => {
+    if (idx === 0) return true;
+    const prev = units[idx-1];
+    if (!prev) return true;
+    return (getScore(prev.id, 'seed') || 0) >= 80;
+  };
+
+  // ——— HEADER ———
+  const Header = ({title, onBack, sub}) => (
+    <div style={{padding:'16px 20px',display:'flex',alignItems:'center',gap:12,borderBottom:`1px solid ${color}15`,position:'sticky',top:0,background:bg||'#0a0a0f',zIndex:10}}>
+      <button onClick={onBack} style={{background:'none',border:'none',color:color,fontSize:22,cursor:'pointer',padding:4}}>←</button>
+      <div>
+        <div style={{...S.heading,fontSize:18,fontWeight:600,color}}>{title}</div>
+        {sub && <div style={{fontSize:12,opacity:0.5,marginTop:2}}>{sub}</div>}
       </div>
     </div>
   );
-}
 
-// ══════════════════════════════════════════
-//  QUIZ VIEW (with mastery feedback)
-// ══════════════════════════════════════════
-
-function QuizView({unit, onComplete, bestPct}) {
-  const [cur, setCur] = useState(0);
-  const [sel, setSel] = useState(null);
-  const [score, setScore] = useState(0);
-  const [done, setDone] = useState(false);
-  const [qs] = useState(() => shuffle(unit.quiz));
-  const t = THEMES[unit.realm];
-
-  const pick = (i) => { if (sel !== null) return; setSel(i); if (i === qs[cur].answer) setScore(s => s + 1); };
-  const next = () => { if (cur + 1 >= qs.length) { setDone(true); onComplete && onComplete(score); return; } setCur(c => c + 1); setSel(null); };
-  const retry = () => { setCur(0); setSel(null); setScore(0); setDone(false); };
-
-  if (done) {
-    const pct = Math.round(score / qs.length * 100);
-    const passed = pct >= MASTERY_THRESHOLD;
-    return (
-      <div style={{textAlign:"center",padding:48,animation:"bounceIn 0.5s ease-out"}}>
-        <div style={{fontSize:72,marginBottom:16}}>{pct >= 100 ? "🏆" : pct >= 90 ? "🥈" : pct >= 80 ? "🥉" : "💪"}</div>
-        <h3 style={{fontFamily:t.font,fontSize:26,color:t.text}}>{score}/{qs.length} ({pct}%)</h3>
-        <p style={{color:t.text,opacity:0.7,fontSize:16,marginTop:8,fontWeight:600}}>
-          {pct >= 100 ? "Gold Mastery! Perfect!" : pct >= 90 ? "Silver! Almost perfect!" : pct >= 80 ? "Bronze — Passed!" : "Keep practicing!"}
+  // ====== HOME ======
+  if (view === 'home') return (
+    <div style={{...S.app,maxWidth:600,margin:'0 auto'}}>
+      <div style={{padding:'48px 24px 24px',textAlign:'center',animation:'fadeIn 0.6s ease'}}>
+        <div style={{fontSize:13,...S.mono,color:'#666',letterSpacing:3,marginBottom:12}}>THE</div>
+        <h1 style={{...S.heading,fontSize:52,fontWeight:700,color:'#e8e4dd',margin:0,lineHeight:1.1,letterSpacing:2}}>TRIVIUM</h1>
+        <p style={{...S.heading,fontSize:17,fontStyle:'italic',color:'#888',marginTop:12}}>Grammar · Logic · Rhetoric</p>
+        <p style={{fontSize:14,color:'#666',marginTop:16,lineHeight:1.6,maxWidth:400,margin:'16px auto 0'}}>
+          The three ancient arts of language, reasoning, and persuasion — from second grade to PhD.
         </p>
-        {passed ? (
-          <div style={{marginTop:16,padding:"12px 20px",background:"#e8f5e9",borderRadius:12,display:"inline-block"}}>
-            <span style={{fontSize:15,color:"#2e7d32",fontWeight:700}}>✅ Unit mastered! Next unit unlocked!</span>
-          </div>
-        ) : (
-          <div style={{marginTop:16,padding:"12px 20px",background:"#fff3e0",borderRadius:12,display:"inline-block"}}>
-            <span style={{fontSize:15,color:"#e65100",fontWeight:700}}>Need {MASTERY_THRESHOLD}% to unlock the next unit. You got this!</span>
-          </div>
-        )}
-        {bestPct > 0 && bestPct > pct && <p style={{fontSize:13,color:t.text,opacity:0.4,marginTop:8}}>Your best: {bestPct}%</p>}
-        <div style={{marginTop:24}}>
-          <button onClick={retry} style={{padding:"14px 36px",background:t.accent,color:"#fff",border:"none",borderRadius:12,fontSize:17,fontWeight:700,cursor:"pointer"}}>
-            {passed ? "Try for Gold!" : "Try Again!"}
-          </button>
-        </div>
       </div>
-    );
-  }
-
-  const q = qs[cur];
-  return (
-    <div style={{animation:"fadeIn 0.3s ease-out"}}>
-      <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,fontSize:14,color:t.text,opacity:0.5}}>
-        <span>Q {cur + 1}/{qs.length}</span><span>Score: {score}</span>
-      </div>
-      <div style={{height:4,background:t.card,borderRadius:2,marginBottom:20}}>
-        <div style={{height:"100%",background:t.accent,borderRadius:2,width:`${(cur / qs.length) * 100}%`,transition:"width 0.3s"}} />
-      </div>
-      <h3 style={{fontFamily:t.font,fontSize:20,color:t.text,marginBottom:20,lineHeight:1.5}}>{q.q}</h3>
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        {q.opts.map((opt, i) => {
-          let bg = "#fff", bd = `2px solid ${t.card}`;
-          if (sel !== null) { if (i === q.answer) { bg = "#e8f5e9"; bd = "2px solid #4caf50"; } else if (sel === i) { bg = "#ffebee"; bd = "2px solid #ef5350"; } }
+      <div style={{padding:'12px 20px 40px',display:'flex',flexDirection:'column',gap:16}}>
+        {BRANCHES.map((b,i) => {
+          const available = b.id === 'grammar';
           return (
-            <button key={i} onClick={() => pick(i)} style={{padding:"16px 20px",background:bg,border:bd,borderRadius:14,textAlign:"left",cursor:sel !== null ? "default" : "pointer",fontSize:16,color:t.text,fontFamily:t.font,transition:"all 0.2s",minHeight:52,animation:sel === i && i !== q.answer ? "shake 0.3s ease-out" : "none"}}>
-              <span style={{fontWeight:700,marginRight:10,color:t.accent}}>{String.fromCharCode(65 + i)}.</span>{opt}
-            </button>
+            <div key={b.id} onClick={available ? ()=>goBranch(b.id) : undefined}
+              style={{...S.card(b.color), opacity:available?1:0.5, cursor:available?'pointer':'default',
+                animation:`slideUp 0.5s ease ${i*0.1}s both`}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <span style={{fontSize:24,marginRight:10}}>{b.icon}</span>
+                  <span style={{...S.heading,fontSize:22,fontWeight:600,color:b.color}}>{b.name}</span>
+                </div>
+                {!available && <span style={{...S.mono,fontSize:11,color:'#555',background:'#ffffff08',padding:'4px 10px',borderRadius:20}}>Coming Soon</span>}
+              </div>
+              <p style={{fontSize:14,color:'#888',marginTop:10,lineHeight:1.5}}>{b.description}</p>
+              <p style={{...S.heading,fontSize:13,fontStyle:'italic',color:b.color,opacity:0.6,marginTop:8}}>{b.subtitle}</p>
+            </div>
           );
         })}
       </div>
-      {sel !== null && (
-        <div style={{marginTop:20,animation:"slideUp 0.3s ease-out"}}>
-          <div style={{background:sel === q.answer ? "#e8f5e9" : "#ffebee",borderRadius:12,padding:"16px 20px",marginBottom:16,lineHeight:1.6}}>
-            <span style={{fontWeight:700,marginRight:8}}>{sel === q.answer ? "✅ Correct!" : "❌ Not quite."}</span>
-            <span style={{fontSize:15,color:t.text}}>{q.explain}</span>
-          </div>
-          <button onClick={next} style={{padding:"14px 32px",background:t.accent,color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:"pointer"}}>
-            {cur + 1 >= qs.length ? "See Results" : "Next →"}
-          </button>
+      {Object.keys(prog).length > 0 && (
+        <div style={{textAlign:'center',paddingBottom:32}}>
+          <button onClick={()=>{if(confirm('Reset all progress?')){localStorage.removeItem(STORAGE_KEY);setProg({});}}}
+            style={{background:'none',border:'none',fontSize:12,color:'#444',cursor:'pointer'}}>Reset Progress</button>
         </div>
       )}
     </div>
   );
-}
 
-// ══════════════════════════════════════════
-//  MATCH VIEW
-// ══════════════════════════════════════════
-
-function MatchView({unit}) {
-  const [pairs] = useState(() => {
-    const m = unit.match;
-    return { left: shuffle(m.map((p, i) => ({id: i, text: p.left}))), right: shuffle(m.map((p, i) => ({id: i, text: p.right}))) };
-  });
-  const [sel, setSel] = useState(null);
-  const [matched, setMatched] = useState(new Set);
-  const t = THEMES[unit.realm];
-
-  const tap = (side, item) => {
-    if (matched.has(item.id)) return;
-    if (!sel) { setSel({side, item}); return; }
-    if (sel.side === side) { setSel({side, item}); return; }
-    if (sel.item.id === item.id) { setMatched(s => { const n = new Set(s); n.add(item.id); return n; }); setSel(null); }
-    else { setSel({side, item}); }
-  };
-
-  const btn = (side, item) => {
-    const m = matched.has(item.id), s = sel && sel.side === side && sel.item.id === item.id;
+  // ====== BRANCH (unit list) ======
+  if (view === 'branch') {
+    const b = BRANCHES.find(x=>x.id===branch);
     return (
-      <button key={`${side}-${item.id}`} onClick={() => tap(side, item)} style={{padding:"14px 16px",background:m?t.card:s?t.accent:"#fff",color:m?t.text+"88":s?"#fff":t.text,border:`2px solid ${m?t.card:s?t.accent:t.card}`,borderRadius:14,fontSize:14,fontFamily:t.font,cursor:m?"default":"pointer",transition:"all 0.2s",textAlign:"left",minHeight:48,opacity:m?0.5:1}}>
-        {item.text}
-      </button>
-    );
-  };
-
-  return (
-    <div style={{animation:"fadeIn 0.3s ease-out"}}>
-      <p style={{fontSize:15,color:t.text,opacity:0.5,marginBottom:16}}>Tap one item, then its match. {matched.size}/{pairs.left.length} found.</p>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>{pairs.left.map(p => btn("left", p))}</div>
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>{pairs.right.map(p => btn("right", p))}</div>
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════
-//  SORT VIEW
-// ══════════════════════════════════════════
-
-function SortView({unit}) {
-  const s = unit.sort;
-  const [items] = useState(() => shuffle(s.items.map((it, i) => ({...it, id: i}))));
-  const [answers, setAnswers] = useState({});
-  const [show, setShow] = useState(false);
-  const t = THEMES[unit.realm];
-  const assign = (id, ci) => { if (!show) setAnswers(a => ({...a, [id]: ci})); };
-  const allDone = Object.keys(answers).length === items.length;
-  const correct = items.filter(it => answers[it.id] === it.cat).length;
-
-  return (
-    <div style={{animation:"fadeIn 0.3s ease-out"}}>
-      <p style={{fontSize:17,fontWeight:600,color:t.text,marginBottom:6,fontFamily:t.font}}>{s.prompt}</p>
-      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-        {s.categories.map((c, i) => (
-          <span key={i} style={{background:t.card,padding:"8px 16px",borderRadius:20,fontSize:14,fontWeight:700,color:t.accent}}>{i + 1}. {c}</span>
-        ))}
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        {items.map(it => {
-          const a = answers[it.id] !== undefined, ok = show && a && answers[it.id] === it.cat, bad = show && a && answers[it.id] !== it.cat;
-          return (
-            <div key={it.id} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderRadius:14,background:ok?"#e8f5e9":bad?"#ffebee":"#fff",border:`2px solid ${ok?"#4caf50":bad?"#ef5350":t.card}`,transition:"all 0.2s",flexWrap:"wrap",animation:bad?"shake 0.3s ease-out":"none"}}>
-              <span style={{flex:1,fontSize:15,color:t.text,fontFamily:t.font,minWidth:100}}>{it.text}</span>
-              <div style={{display:"flex",gap:8,flexShrink:0}}>
-                {s.categories.map((_, ci) => (
-                  <button key={ci} onClick={() => assign(it.id, ci)} style={{width:44,height:44,borderRadius:12,fontSize:17,fontWeight:700,cursor:show?"default":"pointer",transition:"all 0.15s",background:answers[it.id]===ci?t.accent:"transparent",color:answers[it.id]===ci?"#fff":t.text,border:`2px solid ${answers[it.id]===ci?t.accent:t.card}`}}>{ci + 1}</button>
-                ))}
-              </div>
-              {bad && <span style={{fontSize:12,color:"#ef5350",fontWeight:700}}>→{it.cat + 1}</span>}
-            </div>
-          );
-        })}
-      </div>
-      <div style={{marginTop:20,display:"flex",gap:12,flexWrap:"wrap"}}>
-        {allDone && !show && (
-          <button onClick={() => setShow(true)} style={{padding:"14px 32px",background:t.accent,color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:"pointer"}}>Check Answers</button>
-        )}
-        {show && (
-          <>
-            <div style={{padding:"12px 20px",background:correct===items.length?"#e8f5e9":"#fff8e1",borderRadius:12,fontWeight:700,color:t.text,fontFamily:t.font}}>{correct}/{items.length}{correct===items.length?" 🎉":""}</div>
-            <button onClick={() => {setAnswers({});setShow(false);}} style={{padding:"14px 32px",background:t.accent,color:"#fff",border:"none",borderRadius:12,fontSize:16,fontWeight:700,cursor:"pointer"}}>Try Again</button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ══════════════════════════════════════════
-//  MAIN APP
-// ══════════════════════════════════════════
-
-const TABS = [{key:"learn",label:"📖 Learn"},{key:"quiz",label:"❓ Quiz"},{key:"match",label:"🎯 Match"},{key:"sort",label:"🗂️ Sort"}];
-
-export default function LogosApp() {
-  const [unit, setUnit] = useState(null);
-  const [tab, setTab] = useState("learn");
-  const [prog, setProg] = useState(loadProgress);
-  useEffect(() => { saveProgress(prog); }, [prog]);
-
-  const mark = (id, sc) => {
-    const pct = Math.round((sc / C.find(u => u.id === id).quiz.length) * 100);
-    setProg(p => ({
-      ...p,
-      completed: {...p.completed, [id]: true},
-      scores: {...p.scores, [id]: Math.max(sc || 0, p.scores?.[id] || 0)},
-      bestPct: {...p.bestPct, [id]: Math.max(pct, p.bestPct?.[id] || 0)},
-    }));
-  };
-
-  const back = () => { setUnit(null); setTab("learn"); };
-  const cc = Object.keys(prog.completed).length;
-  const total = C.length;
-  const mastered = Object.values(prog.bestPct || {}).filter(p => p >= MASTERY_THRESHOLD).length;
-
-  if (unit !== null) {
-    const u = C.find(x => x.id === unit);
-    const t = THEMES[u.realm];
-    const bp = prog.bestPct?.[u.id] || 0;
-    return (
-      <div style={{minHeight:"100vh",background:t.bg,fontFamily:t.font}}>
-        <div style={{padding:"18px 20px",display:"flex",alignItems:"center",gap:14,borderBottom:`1px solid ${t.card}`,position:"sticky",top:0,background:t.bg,zIndex:10}}>
-          <button onClick={back} style={{background:t.card,border:"none",borderRadius:10,width:44,height:44,fontSize:18,cursor:"pointer",color:t.text,display:"flex",alignItems:"center",justifyContent:"center"}}>←</button>
-          <div style={{flex:1}}>
-            <span style={{fontSize:11,fontWeight:700,color:t.accent,textTransform:"uppercase",letterSpacing:1.2}}>{t.badge} Unit {u.id}</span>
-            <h2 style={{margin:0,fontSize:20,color:t.text,fontFamily:"'Outfit',sans-serif",fontWeight:800}}>{u.title}</h2>
+      <div style={{...S.app,maxWidth:600,margin:'0 auto',background:bg}}>
+        <Header title={b.name} sub={b.subtitle} onBack={goHome}/>
+        <div style={{padding:'20px 20px 40px'}}>
+          <p style={{fontSize:14,color:'#888',lineHeight:1.6,marginBottom:20}}>{b.description}</p>
+          {/* Tier selector */}
+          <div style={{display:'flex',gap:8,marginBottom:20,flexWrap:'wrap'}}>
+            {TIERS.map(t => (
+              <button key={t} onClick={()=>setTier(t)}
+                style={{...S.btn(color, tier===t), fontSize:13, padding:'8px 16px',borderRadius:20}}>
+                {TIER_INFO[t].icon} {TIER_INFO[t].name}
+              </button>
+            ))}
           </div>
-          {badgeFor(bp) && <span style={{fontSize:20}} title={`Best: ${bp}%`}>{badgeFor(bp)}</span>}
+          <div style={{fontSize:12,color:'#666',marginBottom:20}}>{TIER_INFO[tier].desc}</div>
+          {units.map((u,i) => {
+            const locked = !isUnlocked(i);
+            const score = getScore(u.id, tier);
+            const badge = getBadge(score);
+            return (
+              <div key={u.id} onClick={locked?undefined:()=>goUnit(i)}
+                style={{...S.card(color),marginBottom:12,opacity:locked?0.35:1,cursor:locked?'default':'pointer',
+                  animation:`slideUp 0.4s ease ${i*0.05}s both`}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:12}}>
+                    <span style={{...S.mono,fontSize:12,color,opacity:0.5}}>
+                      {locked ? '🔒' : String(i+1).padStart(2,'0')}
+                    </span>
+                    <div>
+                      <div style={{fontSize:16,fontWeight:600,color:'#e8e4dd'}}>{u.title}</div>
+                      <div style={{fontSize:12,color:'#777',marginTop:2}}>{u.sub}</div>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    {badge && <span style={{fontSize:18}}>{badge}</span>}
+                    {score != null && <span style={{...S.mono,fontSize:12,color:score>=80?'#4caf50':'#ff9800'}}>{score}%</span>}
+                    {!locked && !score && <span style={{color,fontSize:18}}>→</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div style={{display:"flex",gap:6,padding:"12px 20px",borderBottom:`1px solid ${t.card}`,overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-          {TABS.map(tb => (
-            <button key={tb.key} onClick={() => setTab(tb.key)} style={{padding:"10px 18px",borderRadius:20,fontSize:14,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s",background:tab===tb.key?t.accent:"transparent",color:tab===tb.key?"#fff":t.text,border:`2px solid ${tab===tb.key?t.accent:"transparent"}`}}>
-              {tb.label}
+      </div>
+    );
+  }
+
+  // ====== UNIT HUB ======
+  if (view === 'unit' && unit) {
+    return (
+      <div style={{...S.app,maxWidth:600,margin:'0 auto',background:bg}}>
+        <Header title={unit.title} sub={unit.sub} onBack={()=>setView('branch')}/>
+        <div style={{padding:'20px 20px 40px'}}>
+          <div style={{fontSize:12,...S.mono,color,opacity:0.6,marginBottom:8}}>
+            {TIER_INFO[tier].icon} {TIER_INFO[tier].name} tier · {unit.anchor}
+          </div>
+          {/* Learn */}
+          <div style={{...S.card(color),marginBottom:16}}>
+            <h3 style={{...S.heading,fontSize:18,color,marginBottom:10}}>Learn</h3>
+            <p style={{fontSize:15,lineHeight:1.7,color:'#ccc'}}>{unit.learn}</p>
+          </div>
+          {/* Mode buttons */}
+          {[
+            {label:'📝 Quiz',desc:'Test your understanding',mode:'quiz'},
+            {label:'✍️ Workshop',desc:'Practice by writing',mode:'workshop'},
+            {label:'📜 Encounter',desc:'Engage with a real text',mode:'encounter'},
+          ].map(m => (
+            <button key={m.mode} onClick={()=>setView(m.mode)}
+              style={{...S.card(color),marginBottom:12,width:'100%',textAlign:'left',display:'block',border:`1px solid ${color}25`}}>
+              <div style={{fontSize:16,fontWeight:600}}>{m.label}</div>
+              <div style={{fontSize:13,color:'#777',marginTop:4}}>{m.desc}</div>
+              {m.mode==='quiz' && getScore(unit.id,tier)!=null && (
+                <div style={{...S.mono,fontSize:12,color:getScore(unit.id,tier)>=80?'#4caf50':'#ff9800',marginTop:6}}>
+                  Best: {getScore(unit.id,tier)}% {getBadge(getScore(unit.id,tier))}
+                </div>
+              )}
             </button>
           ))}
-        </div>
-        <div style={{padding:"24px 20px",maxWidth:720,margin:"0 auto"}}>
-          {tab === "learn" && (
-            <div>
-              <LearnView unit={u} />
-              <div style={{textAlign:"center",marginTop:28}}>
-                <button onClick={() => setTab("quiz")} style={{padding:"14px 36px",background:t.accent,color:"#fff",border:"none",borderRadius:12,fontSize:17,fontWeight:700,cursor:"pointer"}}>
-                  Ready to Practice! →
-                </button>
-              </div>
+          {/* Bridge */}
+          {unit.bridge && (
+            <div style={{marginTop:20,padding:16,background:`${color}08`,borderLeft:`3px solid ${color}30`,borderRadius:4}}>
+              <div style={{fontSize:12,...S.mono,color,opacity:0.6,marginBottom:6}}>BRIDGE</div>
+              <p style={{fontSize:14,lineHeight:1.6,color:'#aaa',fontStyle:'italic'}}>{unit.bridge}</p>
             </div>
           )}
-          {tab === "quiz" && <QuizView key={`q-${u.id}-${Date.now()}`} unit={u} onComplete={sc => mark(u.id, sc)} bestPct={bp} />}
-          {tab === "match" && <MatchView key={`m-${u.id}-${Date.now()}`} unit={u} />}
-          {tab === "sort" && <SortView key={`s-${u.id}-${Date.now()}`} unit={u} />}
+        </div>
+      </div>
+    );
+  }
+
+  // ====== QUIZ ======
+  if (view === 'quiz' && unit) {
+    return <QuizView unit={unit} tier={tier} color={color} bg={bg}
+      onBack={()=>setView('unit')} onComplete={(score)=>{
+        const prev = getScore(unit.id,tier)||0;
+        if(score>prev) setScore(unit.id,tier,score);
+      }}/>;
+  }
+
+  // ====== WORKSHOP ======
+  if (view === 'workshop' && unit) {
+    const prompt = unit.ws[tier];
+    return (
+      <div style={{...S.app,maxWidth:600,margin:'0 auto',background:bg}}>
+        <Header title="Workshop" sub={`${unit.title} · ${TIER_INFO[tier].icon} ${TIER_INFO[tier].name}`} onBack={()=>setView('unit')}/>
+        <div style={{padding:'20px 20px 40px'}}>
+          <div style={{...S.card(color),marginBottom:20}}>
+            <h3 style={{...S.heading,fontSize:18,color,marginBottom:10}}>Your Task</h3>
+            <p style={{fontSize:15,lineHeight:1.7,color:'#ccc',whiteSpace:'pre-wrap'}}>{prompt}</p>
+          </div>
+          <textarea placeholder="Write your response here..."
+            style={{width:'100%',minHeight:200,padding:16,background:'#ffffff06',border:`1px solid ${color}20`,
+              borderRadius:8,color:'#e8e4dd',fontSize:15,lineHeight:1.7,fontFamily:"'Source Sans 3',sans-serif",
+              resize:'vertical',outline:'none'}}/>
+          <p style={{fontSize:12,color:'#555',marginTop:12,lineHeight:1.5}}>
+            Workshop responses are for your own practice. Take your time. There are no wrong answers — only undefended ones.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ====== ENCOUNTER ======
+  if (view === 'encounter' && unit) {
+    const enc = unit.enc;
+    const tierQs = enc.qs.filter(q => {
+      if (tier==='seed') return q.t==='seed';
+      if (tier==='growth') return q.t==='seed'||q.t==='growth';
+      return true;
+    });
+    return (
+      <div style={{...S.app,maxWidth:600,margin:'0 auto',background:bg}}>
+        <Header title="Encounter" sub={`${unit.title} · ${TIER_INFO[tier].icon} ${TIER_INFO[tier].name}`} onBack={()=>setView('unit')}/>
+        <div style={{padding:'20px 20px 40px'}}>
+          <div style={{padding:24,background:`${color}06`,borderLeft:`3px solid ${color}30`,borderRadius:4,marginBottom:24}}>
+            <p style={{...S.heading,fontSize:17,lineHeight:1.8,color:'#d4d0c8',fontStyle:'italic',whiteSpace:'pre-wrap'}}>{enc.text}</p>
+            <p style={{fontSize:13,color:'#666',marginTop:12}}>{enc.attr}</p>
+          </div>
+          <p style={{fontSize:13,color:'#888',marginBottom:20}}>Read the passage above slowly — at least twice. Then respond to the questions below.</p>
+          {tierQs.map((q,i) => (
+            <div key={i} style={{marginBottom:24}}>
+              <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
+                <span style={{fontSize:14}}>{TIER_INFO[q.t].icon}</span>
+                <p style={{fontSize:15,fontWeight:600,color:'#ccc'}}>{q.q}</p>
+              </div>
+              <textarea placeholder="Your response..."
+                style={{width:'100%',minHeight:120,padding:14,background:'#ffffff06',border:`1px solid ${color}15`,
+                  borderRadius:8,color:'#e8e4dd',fontSize:14,lineHeight:1.6,fontFamily:"'Source Sans 3',sans-serif",
+                  resize:'vertical',outline:'none'}}/>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return <div style={S.app}><Header title="TRIVIUM" onBack={goHome}/><p style={{padding:20,color:'#666'}}>View not found.</p></div>;
+}
+
+// ====== QUIZ COMPONENT ======
+function QuizView({ unit, tier, color, bg, onBack, onComplete }) {
+  const questions = unit.quiz[tier] || unit.quiz.seed;
+  const [qi, setQi] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [score, setScoreLocal] = useState(0);
+  const [done, setDone] = useState(false);
+  const [feedback, setFeedback] = useState(null); // 'correct' | 'wrong'
+
+  const q = questions[qi];
+  const total = questions.length;
+
+  const handleSelect = (idx) => {
+    if (feedback) return;
+    setSelected(idx);
+    const correct = idx === q.a;
+    if (correct) setScoreLocal(s => s + 1);
+    setFeedback(correct ? 'correct' : 'wrong');
+    setTimeout(() => {
+      if (qi + 1 >= total) {
+        const pct = Math.round(((correct ? score + 1 : score) / total) * 100);
+        onComplete(pct);
+        setDone(true);
+      } else {
+        setQi(qi + 1);
+        setSelected(null);
+        setFeedback(null);
+      }
+    }, correct ? 800 : 1500);
+  };
+
+  if (done) {
+    const pct = Math.round((score / total) * 100);
+    const passed = pct >= 80;
+    const badge = pct >= 100 ? '🏆' : pct >= 90 ? '🥈' : pct >= 80 ? '🥉' : null;
+    return (
+      <div style={{...{minHeight:'100vh',fontFamily:"'Source Sans 3',sans-serif",background:bg,color:'#e8e4dd'},maxWidth:600,margin:'0 auto'}}>
+        <div style={{padding:'80px 24px',textAlign:'center',animation:'fadeIn 0.5s ease'}}>
+          <div style={{fontSize:64,marginBottom:16}}>{badge || '📊'}</div>
+          <h2 style={{fontFamily:"'Cormorant Garamond',serif",fontSize:28,color:passed?color:'#ff9800',marginBottom:8}}>
+            {passed ? 'Well Done' : 'Keep Practicing'}
+          </h2>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:32,color:passed?'#4caf50':'#ff9800',marginBottom:8}}>{pct}%</div>
+          <p style={{fontSize:14,color:'#888',marginBottom:32}}>
+            {score} of {total} correct{passed ? '' : ` — need 80% to unlock the next unit`}
+          </p>
+          <div style={{display:'flex',gap:12,justifyContent:'center'}}>
+            <button onClick={()=>{setQi(0);setScoreLocal(0);setDone(false);setSelected(null);setFeedback(null);}}
+              style={{padding:'12px 24px',borderRadius:8,border:`1.5px solid ${color}33`,background:'transparent',color,fontSize:15,fontWeight:600,cursor:'pointer',fontFamily:"'Source Sans 3',sans-serif"}}>
+              Try Again
+            </button>
+            <button onClick={onBack}
+              style={{padding:'12px 24px',borderRadius:8,border:'none',background:color,color:'#0a0a0f',fontSize:15,fontWeight:600,cursor:'pointer',fontFamily:"'Source Sans 3',sans-serif"}}>
+              Back to Unit
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{minHeight:"100vh",background:"#FDFAF5",fontFamily:"'Outfit',sans-serif"}}>
-      <div style={{padding:"44px 24px 28px",textAlign:"center",background:"linear-gradient(180deg,#FFF8F0,#FDFAF5)"}}>
-        <div style={{fontSize:44,marginBottom:4}}>🏛️</div>
-        <h1 style={{margin:0,fontSize:40,fontWeight:900,color:"#3D2C1E",letterSpacing:-1}}>LOGOS</h1>
-        <p style={{margin:"6px 0 0",fontSize:16,color:"#8B7355",fontFamily:"'Literata',serif",fontStyle:"italic"}}>The Adventure of Clear Thinking</p>
-        <div style={{maxWidth:300,margin:"16px auto 0"}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#B8A88A",marginBottom:4}}>
-            <span>{mastered}/{total} mastered</span>
-            <span>{Math.round(mastered/total*100)}%</span>
+    <div style={{minHeight:'100vh',fontFamily:"'Source Sans 3',sans-serif",background:bg,color:'#e8e4dd',maxWidth:600,margin:'0 auto'}}>
+      {/* Progress bar */}
+      <div style={{padding:'16px 20px',display:'flex',alignItems:'center',gap:12,borderBottom:`1px solid ${color}15`,position:'sticky',top:0,background:bg,zIndex:10}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color,fontSize:22,cursor:'pointer',padding:4}}>←</button>
+        <div style={{flex:1}}>
+          <div style={{height:4,background:'#ffffff10',borderRadius:2,overflow:'hidden'}}>
+            <div style={{height:'100%',background:color,borderRadius:2,width:`${((qi)/total)*100}%`,transition:'width 0.3s ease'}}/>
           </div>
-          <div style={{height:6,background:"#EDE5D8",borderRadius:3,overflow:"hidden"}}>
-            <div style={{height:"100%",background:"linear-gradient(90deg,#E8722A,#F4A261)",borderRadius:3,width:`${mastered/total*100}%`,transition:"width 0.5s"}} />
-          </div>
-          <p style={{fontSize:11,color:"#B8A88A",marginTop:6}}>Score 80%+ on the quiz to master each unit and unlock the next</p>
+          <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:11,color:'#666',marginTop:4}}>{qi+1} / {total}</div>
         </div>
+        <div style={{fontFamily:"'JetBrains Mono',monospace",fontSize:13,color:'#4caf50'}}>{score} ✓</div>
       </div>
-      <div style={{maxWidth:640,margin:"0 auto",padding:"8px 20px 60px"}}>
-        {REALM_ORDER.map(realm => {
-          const t = THEMES[realm];
-          const units = C.filter(u => u.realm === realm);
-          const rc = units.filter(u => (prog.bestPct?.[u.id] || 0) >= MASTERY_THRESHOLD).length;
-          return (
-            <div key={realm} style={{marginBottom:28}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                <span style={{fontSize:24}}>{t.badge}</span>
-                <div style={{flex:1}}>
-                  <h2 style={{margin:0,fontSize:20,fontWeight:800,color:t.text}}>{t.label}</h2>
-                  <span style={{fontSize:12,color:t.accent,fontWeight:600}}>{REALM_LABELS[realm]}</span>
-                </div>
-                {rc > 0 && <span style={{fontSize:12,color:t.sec,fontWeight:700,background:t.card,padding:"4px 10px",borderRadius:12}}>{rc}/{units.length}</span>}
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {units.map(u => {
-                  const locked = !isUnlocked(u.id, prog);
-                  const bp = prog.bestPct?.[u.id] || 0;
-                  const b = badgeFor(bp);
-                  return (
-                    <button key={u.id} onClick={() => !locked && setUnit(u.id)} style={{
-                      display:"flex",alignItems:"center",gap:16,padding:"16px 20px",
-                      background: locked ? "#f5f5f5" : "#fff",
-                      border:`2px solid ${locked ? "#e0e0e0" : t.card}`,borderRadius:14,
-                      cursor: locked ? "not-allowed" : "pointer",textAlign:"left",transition:"all 0.2s",
-                      boxShadow: locked ? "none" : "0 2px 8px rgba(0,0,0,0.04)",
-                      opacity: locked ? 0.6 : 1,
-                    }}
-                      onMouseEnter={e => { if (!locked) { e.currentTarget.style.borderColor = t.accent; e.currentTarget.style.transform = "translateY(-1px)"; }}}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = locked ? "#e0e0e0" : t.card; e.currentTarget.style.transform = "translateY(0)"; }}
-                    >
-                      <div style={{width:40,height:40,borderRadius:10,background: locked ? "#e0e0e0" : t.card,display:"flex",alignItems:"center",justifyContent:"center",fontSize: locked ? 18 : 16,fontWeight:900,color: locked ? "#999" : t.accent,flexShrink:0,fontFamily:"'JetBrains Mono',monospace"}}>
-                        {locked ? "🔒" : u.id}
-                      </div>
-                      <div style={{flex:1}}>
-                        <h3 style={{margin:0,fontSize:15,fontWeight:700,color: locked ? "#999" : t.text}}>{u.title}</h3>
-                        <p style={{margin:"2px 0 0",fontSize:12,color:t.text,opacity: locked ? 0.3 : 0.5}}>
-                          {locked ? "Master the previous unit to unlock" : u.subtitle}
-                        </p>
-                      </div>
-                      {b ? <span style={{fontSize:16}}>{b}</span> :
-                       bp > 0 ? <span style={{fontSize:12,color:"#e65100",fontWeight:700}}>{bp}%</span> :
-                       !locked ? <span style={{fontSize:18,color:t.accent}}>→</span> : null}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        {cc > 0 && (
-          <div style={{textAlign:"center",marginTop:16}}>
-            <button onClick={() => { if (confirm("Reset all progress?")) { localStorage.removeItem(STORAGE_KEY); setProg({completed:{},scores:{},bestPct:{}}); }}} style={{background:"none",border:"none",fontSize:13,color:"#ccc",cursor:"pointer",padding:"8px 16px"}}>
-              Reset Progress
-            </button>
-          </div>
-        )}
+      {/* Question */}
+      <div style={{padding:'24px 20px 40px',animation:'fadeIn 0.3s ease'}} key={qi}>
+        <p style={{fontSize:17,fontWeight:600,lineHeight:1.6,marginBottom:24,color:'#e8e4dd'}}>{q.q}</p>
+        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+          {q.o.map((opt, i) => {
+            let optBg = `${color}08`;
+            let optBorder = `${color}20`;
+            let optColor = '#ccc';
+            if (feedback && i === q.a) { optBg = '#4caf5025'; optBorder = '#4caf50'; optColor = '#4caf50'; }
+            else if (feedback === 'wrong' && i === selected) { optBg = '#f4433625'; optBorder = '#f44336'; optColor = '#f44336'; }
+            else if (selected === i) { optBg = `${color}15`; optBorder = color; }
+            return (
+              <button key={i} onClick={()=>handleSelect(i)}
+                style={{padding:'14px 18px',borderRadius:8,border:`1.5px solid ${optBorder}`,background:optBg,
+                  color:optColor,fontSize:15,textAlign:'left',cursor:feedback?'default':'pointer',
+                  transition:'all 0.2s',fontFamily:"'Source Sans 3',sans-serif",lineHeight:1.4,
+                  animation: feedback==='wrong'&&i===selected ? 'shake 0.4s ease' : feedback==='correct'&&i===q.a ? 'correctPop 0.3s ease' : 'none',
+                }}>
+                {opt}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
