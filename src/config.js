@@ -1,7 +1,7 @@
 export const BRANCHES = [
-  { id:'grammar', name:'GRAMMAR', subtitle:'The Art of Attending to Language', icon:'📖', color:'#c9a84c', bg:'#100e08', description:'Learn to see how language is built so you can take it apart, put it back together, and hear what a text is really doing.' },
-  { id:'logic', name:'LOGIC', subtitle:'The Art of Reasoning', icon:'🔷', color:'#4a8cc9', bg:'#080c10', description:'Distinguish what follows from what doesn\'t, and what we know from what we assume.' },
-  { id:'rhetoric', name:'RHETORIC', subtitle:'The Art of Moving Others', icon:'🔥', color:'#c94a4a', bg:'#100808', description:'Speak and write so that your words reach an audience and do something to them.' },
+  { id:'grammar', name:'GRAMMAR', subtitle:'The Art of Attending to Language', icon:'📖', color:'#7c6420', bg:'#faf8f3', description:'Learn to see how language is built so you can take it apart, put it back together, and hear what a text is really doing.' },
+  { id:'logic', name:'LOGIC', subtitle:'The Art of Reasoning', icon:'🔷', color:'#2a6cb0', bg:'#f3f7fb', description:'Distinguish what follows from what doesn\'t, and what we know from what we assume.' },
+  { id:'rhetoric', name:'RHETORIC', subtitle:'The Art of Moving Others', icon:'🔥', color:'#b03a3a', bg:'#fbf3f3', description:'Speak and write so that your words reach an audience and do something to them.' },
 ];
 export const TIERS = ['seed','growth','canopy'];
 export const TIER_INFO = {
